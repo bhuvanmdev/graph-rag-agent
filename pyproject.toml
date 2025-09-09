@@ -1,0 +1,27 @@
+[project]
+name = "atlan"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "beautifulsoup4>=4.13.5",
+    "chromadb>=1.0.20",
+    "crawl4ai>=0.7.4",
+    "google-generativeai>=0.8.5",
+    "gradio>=5.44.1",
+    "html2text>=2025.4.15",
+    "langchain>=0.3.27",
+    "langchain-community>=0.3.29",
+    "llama-index>=0.14.0",
+    "neo4j>=5.28.2",
+    "nltk>=3.9.1",
+    "pandas>=2.2.3",
+    "psutil>=7.0.0",
+    "requests>=2.32.5",
+    "scrapy>=2.13.3",
+    "sentence-transformers>=5.1.0",
+    "spacy>=3.8.7",
+    "textblob>=0.19.0",
+    "transformers>=4.56.1",
+]
