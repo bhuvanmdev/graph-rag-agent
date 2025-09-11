@@ -133,6 +133,34 @@ class SQLiteTicketManager:
             conn.commit()
             logger.info(f"Stored ticket {ticket.id}")
 
+    def update_ticket_answer(self, ticket_id: str, rag_answer: RAGQueryResult):
+        """
+        Update the RAG answer for an existing ticket
+        
+        Args:
+            ticket_id: The ticket ID
+            rag_answer: The RAG answer to store
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute('''
+                INSERT OR REPLACE INTO answers
+                (ticket_id, answer, sources, chunks_used)
+                VALUES (?, ?, ?, ?)
+            ''', (
+                ticket_id,
+                rag_answer.answer,
+                json.dumps(rag_answer.sources),
+                rag_answer.chunks_used
+            ))
+            
+            # Also update the use_rag flag in classifications
+            conn.execute('''
+                UPDATE classifications SET use_rag = 1 WHERE ticket_id = ?
+            ''', (ticket_id,))
+            
+            conn.commit()
+            logger.info(f"Updated RAG answer for ticket {ticket_id}")
+
     def get_ticket_stats(self) -> Dict:
         """Get statistics about stored tickets"""
         with sqlite3.connect(self.db_path) as conn:

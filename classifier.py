@@ -179,6 +179,6 @@ Provide a structured classification with reasoning for your decisions."""
         Returns:
             Boolean indicating if RAG should be used
         """
-        # rag_topics = [TopicEnum.HOW_TO, TopicEnum.PRODUCT, TopicEnum.BEST_PRACTICES,
-        #              TopicEnum.API_SDK, TopicEnum.SSO]
-        return 1  or topic in rag_topics
+        rag_topics = [TopicEnum.HOW_TO, TopicEnum.PRODUCT, TopicEnum.BEST_PRACTICES,
+                     TopicEnum.API_SDK, TopicEnum.SSO]
+        return topic in rag_topics

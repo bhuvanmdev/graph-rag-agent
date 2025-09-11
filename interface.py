@@ -8,7 +8,7 @@ including bulk ticket processing and individual query handling.
 import json
 import logging
 import sqlite3
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Any
 from datetime import datetime
 
 import gradio as gr
@@ -234,15 +234,15 @@ class GradioInterface:
 
         return html
 
-    def process_single_ticket(self, subject: str, body: str) -> Tuple[str, str, str, str, str]:
+    def process_single_ticket(self, subject: str, body: str) -> Tuple[str, str, str, str, str, bool, Optional[Any]]:
         """
         Process a single new ticket
 
         Returns:
-            Tuple of (backend_view, frontend_view, sources_info, routing_info, ticket_id)
+            Tuple of (backend_view, frontend_view, sources_info, routing_info, ticket_id, use_rag, rag_answer)
         """
         if not subject or not body:
-            return "Please provide both subject and body.", "", "", "", ""
+            return "Please provide both subject and body.", "", "", "", "", False, None
 
         # Create ticket dictionary
         ticket = TicketData(
@@ -273,50 +273,83 @@ class GradioInterface:
 **🎯 Routing Decision:** {'🤖 RAG Pipeline' if use_rag else '👥 Human Agent'}
             """
 
-            # if use_rag:
+            if use_rag:
                 # Generate RAG answer
-            query = f"Subject: {subject}\nBody: {body}"
-            rag_answer = self.rag.answer_query(query, top_k=5)
+                query = f"Subject: {subject}\nBody: {body}"
+                rag_answer = self.rag.answer_query(query, top_k=5)
                 # Store with RAG answer
-            self.ticket_manager.store_ticket(ticket, classification, rag_answer)
+                self.ticket_manager.store_ticket(ticket, classification, rag_answer)
 
                 # Format frontend view (customer response)
-            frontend_view = f"""
+                frontend_view = f"""
 ### 💬 **FRONTEND VIEW** (Customer Response)
 
 {rag_answer.answer}
 """         
             
                 # Format sources information
-            sources_info = ""
-            if rag_answer.sources:
-                sources_info = f"""
+                sources_info = ""
+                if rag_answer.sources:
+                    sources_info = f"""
 ### 📚 **SOURCES USED**
 
-{"<br>".join([f"{num}. 📄 {source}" for num,source in enumerate(rag_answer.sources)])}
+{"<br>".join([f"{num+1}. 📄 {source}" for num,source in enumerate(rag_answer.sources)])}
                 """
 
-            # Format routing information
-            routing_info = f"""
+                # Format routing information
+                routing_info = f"""
 ### ✅ **RAG SYSTEM RESPONSE**
 
-**Status:** Automatically answered by AI
-**Processing Time:** Real-time
-**Confidence:** High (based on documentation sources)
+**Status:** Automatically answered by AI<br>
+**Processing Time:** Real-time<br>
+**Confidence:** High (based on documentation sources)<br>
 **Next Steps:** Response sent to customer
-            """
+                """
 
-            if use_rag:
-                frontend_view += f"""            
+                if use_rag:
+                    frontend_view += f"""            
 This issue was classified as a **{classification.topic.value}** topic and has been automatically addressed by our AI system. If you are not satisfied with this response, please reply click on the ask human button below.
 """
 
-            return backend_view, frontend_view, sources_info, routing_info, ticket.id
+            else:
+                # For human routing
+                rag_answer = None
+                self.ticket_manager.store_ticket(ticket, classification, None)
+
+                frontend_view = f"""
+### 💬 **FRONTEND VIEW** (Customer Response)
+
+Thank you for your inquiry. This issue has been classified as a **{classification.topic.value}** topic and requires human assistance. Our support team will review your request and get back to you within our standard SLA timeframe.
+
+**Topic:** {classification.topic.value}
+
+**Priority:** {classification.priority.value}
+
+**Next Steps:** A human agent will be assigned to your case shortly.
+
+"""
+
+                sources_info = ""
+
+                routing_info = f"""
+### 👥 **HUMAN AGENT ROUTING**
+
+**Status:** Ticket routed to human agent
+
+**Reason:** Topic requires specialized human expertise
+
+**Queue:** Added to human review queue
+
+**Expected Response:** Within SLA timeframe
+
+"""
+
+            return backend_view, frontend_view, sources_info, routing_info, ticket.id, use_rag, rag_answer
 
         except Exception as e:
             logger.error(f"Error processing single ticket: {str(e)}")
             error_msg = f"**Error processing ticket:** {str(e)}"
-            return error_msg, error_msg, "", "", ""
+            return error_msg, error_msg, "", "", "", False, None
 
     def request_human_review(self, ticket_id: str, original_question: str, rag_answer: str) -> Tuple[str, bool]:
         """
@@ -355,6 +388,70 @@ Thank you for your patience while our expert team prepares a comprehensive respo
             """, False
         else:
             return "Failed to submit human review request. Please try again.", True
+
+    def ask_ai(self, ticket_id: str, question: str) -> Tuple[str, bool, str, str, str]:
+        """
+        Generate AI response for a ticket that was initially routed to human
+        
+        Returns:
+            Tuple of (status_message, button_interactive, new_frontend, new_sources, new_routing)
+        """
+        if not ticket_id or not question:
+            return "No ticket information available.", True, "", "", ""
+
+        # Generate RAG answer
+        rag_answer = self.rag.answer_query(question, top_k=5)
+
+        # Update the ticket with RAG answer
+        self.ticket_manager.update_ticket_answer(ticket_id, rag_answer)
+
+        # Format new frontend
+        new_frontend = f"""
+### 💬 **FRONTEND VIEW** (Customer Response)
+
+{rag_answer.answer}
+
+This issue was addressed by our AI system. If you are not satisfied with this response, please reply to request human assistance.
+"""
+
+        new_sources = ""
+        if rag_answer.sources:
+            new_sources = f"""
+### 📚 **SOURCES USED**
+
+{"<br>".join([f"{num}. 📄 {source}" for num,source in enumerate(rag_answer.sources)])}
+"""
+
+        new_routing = f"""
+### ✅ **AI RESPONSE GENERATED**
+
+**Status:** Manually invoked AI response
+**Processing Time:** Real-time
+**Next Steps:** Response sent to customer
+"""
+
+        return f"""
+### ✅ **AI Response Generated**
+
+**Status:** RAG answer has been generated for this ticket
+**Response:** {rag_answer.answer[:100]}...
+""", False, new_frontend, new_sources, new_routing
+
+    def handle_button_click(self, use_rag: bool, ticket_id: str, question: str, rag_answer: str) -> Tuple[str, Any, str, str, str]:
+        """
+        Handle button click based on use_rag flag
+        
+        Returns:
+            Tuple of (status_message, button_update, frontend_update, sources_update, routing_update)
+        """
+        if use_rag:
+            # Request human review
+            status, interactive = self.request_human_review(ticket_id, question, rag_answer)
+            return status, gr.update(interactive=interactive), "", "", ""
+        else:
+            # Generate AI response
+            status, interactive, new_frontend, new_sources, new_routing = self.ask_ai(ticket_id, question)
+            return status, gr.update(interactive=interactive), new_frontend, new_sources, new_routing
 
     def _get_rag_answer_for_ticket(self, ticket_id: str) -> str:
         """Get the RAG answer for a specific ticket"""
@@ -965,6 +1062,15 @@ Thank you for your patience while our expert team prepares a comprehensive respo
                 padding: 8px;
                 text-align: left;
                 word-wrap: break-word;
+                color: #333333;
+            }
+            .db-table code {
+                background-color: transparent !important;
+                color: #333333 !important;
+                padding: 2px 4px;
+                border-radius: 3px;
+                font-family: monospace;
+                border: 1px solid #ddd;
             }
             .db-table th {
                 font-weight: bold;
@@ -973,8 +1079,11 @@ Thank you for your patience while our expert team prepares a comprehensive respo
             .db-table tbody tr:nth-child(even) {
                 background-color: #f9f9f9;
             }
+            .db-table tbody tr:nth-child(odd) {
+                background-color: #ffffff;
+            }
             .db-table tbody tr:hover {
-                background-color: #e3f2fd;
+                background-color: #e3f2fd !important;
             }
             .topic-badge {
                 background-color: #e3f2fd;
@@ -1120,7 +1229,7 @@ Thank you for your patience while our expert team prepares a comprehensive respo
                     with gr.Row():
                         with gr.Column(scale=1):
                             ask_human_btn = gr.Button(
-                                "👥 Ask Human", 
+                                "🤖 Ask AI / 👥 Ask Human", 
                                 variant="secondary", 
                                 size="lg",
                                 interactive=False,
@@ -1138,32 +1247,42 @@ Thank you for your patience while our expert team prepares a comprehensive respo
                     current_ticket_id = gr.State("")
                     current_question = gr.State("")
                     current_rag_answer = gr.State("")
+                    current_use_rag = gr.State(False)
 
                     # New ticket processing event
                     submit_ticket_btn.click(
                         fn=self.process_single_ticket,
                         inputs=[new_subject, new_body],
-                        outputs=[backend_output, frontend_output, sources_output, routing_output, current_ticket_id]
+                        outputs=[backend_output, frontend_output, sources_output, routing_output, current_ticket_id, current_use_rag, current_rag_answer]
                     ).then(
                         fn=lambda ticket_id, subject, body: (
                             f"{subject}\n\n{body}",  # current_question
                             "",  # current_rag_answer (will be set below)
-                            gr.update(interactive=True, visible=bool(ticket_id)),  # ask_human_btn
-                            gr.update(visible=False)  # human_review_status
                         ),
                         inputs=[current_ticket_id, new_subject, new_body],
-                        outputs=[current_question, current_rag_answer, ask_human_btn, human_review_status]
+                        outputs=[current_question, current_rag_answer]
                     ).then(
                         fn=lambda ticket_id: self._get_rag_answer_for_ticket(ticket_id) if ticket_id else "",
                         inputs=[current_ticket_id],
                         outputs=[current_rag_answer]
+                    ).then(
+                        fn=lambda use_rag, ticket_id: gr.update(
+                            value="👥 Ask Human" if use_rag else "🤖 Ask AI",
+                            interactive=bool(ticket_id),
+                            visible=bool(ticket_id)
+                        ),
+                        inputs=[current_use_rag, current_ticket_id],
+                        outputs=[ask_human_btn]
+                    ).then(
+                        fn=lambda: gr.update(visible=False),
+                        outputs=[human_review_status]
                     )
 
-                    # Human review request event
+                    # Dynamic button click event (handles both Ask Human and Ask AI)
                     ask_human_btn.click(
-                        fn=self.request_human_review,
-                        inputs=[current_ticket_id, current_question, current_rag_answer],
-                        outputs=[human_review_status, ask_human_btn]
+                        fn=self.handle_button_click,
+                        inputs=[current_use_rag, current_ticket_id, current_question, current_rag_answer],
+                        outputs=[human_review_status, ask_human_btn, frontend_output, sources_output, routing_output]
                     ).then(
                         fn=lambda: gr.update(visible=True),
                         outputs=[human_review_status]
