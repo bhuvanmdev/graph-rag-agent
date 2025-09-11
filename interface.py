@@ -212,7 +212,28 @@ class GradioInterface:
             # Truncate response for display
             response = result['rag_answer']
             if len(response) > 200:
-                response = response[:200] + "..."
+                truncated_response = response[:200] + "..."
+                full_response = response.replace('\n', '<br>').replace('"', '&quot;').replace("'", "&#39;")
+                response_html = f'''
+                <div class="expandable-text" onclick="
+                    var truncated = this.querySelector('.truncated-text');
+                    var full = this.querySelector('.full-text');
+                    var indicator = this.querySelector('.expand-indicator');
+                    if (this.classList.contains('expanded')) {{
+                        this.classList.remove('expanded');
+                        indicator.innerHTML = ' [Click to expand]';
+                    }} else {{
+                        this.classList.add('expanded');
+                        indicator.innerHTML = ' [Click to collapse]';
+                    }}
+                ">
+                    <span class="truncated-text" style="color: #333333;">{truncated_response}</span>
+                    <span class="full-text" style="color: #333333;">{full_response}</span>
+                    <span class="expand-indicator"> [Click to expand]</span>
+                </div>
+                '''
+            else:
+                response_html = f'<span style="color: #333333;">{response}</span>'
 
             html += f"""
             <tr class="{row_class}">
@@ -222,7 +243,7 @@ class GradioInterface:
                 <td style="color: black;">{result['sentiment']}</td>
                 <td class="{priority_class}" style="color: black;">{result['priority']}</td>
                 <td class="{handling_class}" style="color: black;">{handling}</td>
-                <td style="max-width: 300px; word-wrap: break-word; color: black;">{response}</td>
+                <td style="max-width: 300px; word-wrap: break-word; color: black;">{response_html}</td>
             </tr>
             """
 
@@ -1124,6 +1145,34 @@ This issue was addressed by our AI system. If you are not satisfied with this re
                 border-radius: 4px;
                 font-size: 10px;
                 font-weight: bold;
+            }
+            .expandable-text {
+                cursor: pointer;
+                position: relative;
+                color: #333333;
+            }
+            .expandable-text:hover {
+                background-color: #f0f0f0;
+                border-radius: 4px;
+            }
+            .expandable-text.expanded {
+                background-color: #e8f5e8;
+                border-radius: 4px;
+                padding: 5px;
+            }
+            .expand-indicator {
+                color: #1976d2;
+                font-weight: bold;
+                font-size: 12px;
+            }
+            .full-text {
+                display: none;
+            }
+            .expandable-text.expanded .truncated-text {
+                display: none;
+            }
+            .expandable-text.expanded .full-text {
+                display: inline;
             }
             """
         ) as interface:
