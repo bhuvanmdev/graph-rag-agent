@@ -36,10 +36,6 @@ def main():
     """Main application entry point"""
     logger.info("Starting Customer Support Copilot - RAG System")
 
-    # Check environment setup
-    # if not setup_environment():
-    #     sys.exit(1)
-
     try:
         # Initialize components
         logger.info("Initializing Neo4j retriever...")

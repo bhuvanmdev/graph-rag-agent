@@ -18,8 +18,7 @@ echo Creating data directories...
 if not exist "neo4j_data" mkdir neo4j_data
 if not exist "neo4j_logs" mkdir neo4j_logs
 
-echo.
-echo Starting Neo4j container...
+echo Running Neo4j container...
 docker run -d ^
     --name neo4j-rag ^
     -p 7474:7474 -p 7687:7687 ^
@@ -29,21 +28,5 @@ docker run -d ^
     -v %cd%\neo4j_logs:/logs ^
     neo4j:5.15
 
-echo.
-echo Waiting for Neo4j to start...
-timeout /t 30 /nobreak >nul
-
-echo.
-echo Neo4j is starting up...
-echo - Web interface: http://localhost:7474
-echo - Username: neo4j
-echo - Password: password
-echo.
-echo Checking if Neo4j is ready...
-timeout /t 10 /nobreak >nul
-
-echo.
-echo Setup complete! Neo4j should be running.
-echo You can now run the ingestion pipeline.
-echo.
-pause
+echo Neo4j is starting up. It may take a few moments for the database to be fully operational.
+echo You can access the Neo4j Browser at: http://localhost:7474

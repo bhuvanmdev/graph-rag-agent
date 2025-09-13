@@ -1,0 +1,44 @@
+# Graph-RAG Agent Dockerfile
+
+FROM python:3.13-slim
+
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y git curl default-jre nginx netcat-traditional && \
+    rm -rf /var/lib/apt/lists/*
+
+# Download and install Neo4j Community Edition
+RUN curl -fsSL https://dist.neo4j.org/neo4j-community-5.15.0-unix.tar.gz -o neo4j.tar.gz && \
+    tar -xzf neo4j.tar.gz && \
+    mv neo4j-community-5.15.0 /neo4j && \
+    rm neo4j.tar.gz || echo "Neo4j download failed, continuing..."
+
+# Set workdir
+WORKDIR /app
+
+# Clone the project
+RUN git clone https://github.com/bhuvanmdev/graph-rag-agent.git .
+
+# Copy Neo4j data and logs
+VOLUME ["/app/neo4j_data", "/app/neo4j_logs"]
+
+# Install Python dependencies
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt
+
+# Copy Nginx config and run script
+COPY nginx.conf /etc/nginx/nginx.conf
+COPY run.sh /app/run.sh
+RUN chmod +x /app/run.sh
+
+# Expose HTTP (Nginx), Neo4j, and Gradio ports
+EXPOSE 80 7474 7687 7860
+
+# Set environment variables for Neo4j
+# Note: In production, use Docker secrets or environment files for sensitive data
+ENV NEO4J_HOME=/neo4j
+ENV NEO4J_AUTH=neo4j/password
+ENV NEO4J_PLUGINS='["apoc","neo4j-vector"]'
+
+# Entrypoint: Start all services
+ENTRYPOINT ["/app/run.sh"]

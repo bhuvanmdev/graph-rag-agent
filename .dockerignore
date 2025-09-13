@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+neo4j_data/
+neo4j_logs/
+tickets.db
+.env

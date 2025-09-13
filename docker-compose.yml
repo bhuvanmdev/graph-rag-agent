@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  neo4j:
+    image: neo4j:5.15
+    container_name: neo4j-rag
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: "neo4j/password"
+      NEO4J_PLUGINS: '["apoc","neo4j-vector"]'
+    volumes:
+      - ./neo4j_data:/data
+      - ./neo4j_logs:/logs
+
+  rag-app:
+    build: .
+    container_name: rag-app
+    depends_on:
+      - neo4j
+    environment:
+      NEO4J_URI: "bolt://neo4j:7687"
+      NEO4J_USERNAME: "neo4j"
+      NEO4J_PASSWORD: "password"
+      GEMINI_API_KEY: "your_gemini_api_key_here"
+    ports:
+      - "7860:7860"
+    volumes:
+      - ./neo4j_data:/app/neo4j_data
+      - ./neo4j_logs:/app/neo4j_logs
