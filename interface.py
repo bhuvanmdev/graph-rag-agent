@@ -8,8 +8,6 @@ including bulk ticket processing and individual query handling.
 import json
 import logging
 import sqlite3
-import asyncio
-import concurrent.futures
 from typing import List, Dict, Tuple, Optional, Any
 from datetime import datetime
 
@@ -56,32 +54,32 @@ class GradioInterface:
 
     def _process_single_ticket_for_bulk(self, ticket: TicketData) -> Dict:
         """
-        Process a single ticket for bulk processing
+        Process a single ticket for bulk processing with error handling
         
         Args:
             ticket: The ticket to process
             
         Returns:
-            Dictionary with processing results
+            Dictionary with processing results including success status
         """
         try:
-            # Classify the ticket
+            # Step 1: Classify the ticket
             classification = self.classifier.classify_ticket(ticket)
 
-            # Determine if RAG should be used
+            # Step 2: Determine routing (RAG vs Human)
             use_rag = self.classifier.should_use_rag(classification.topic)
 
+            # Step 3: Generate RAG answer if needed
             rag_answer = None
             if use_rag:
-                # Generate RAG answer
                 query = f"{ticket.subject} {ticket.body}"
                 rag_answer = self.rag.answer_query(query, top_k=8)
 
-            # Store in database
+            # Step 4: Store in database
             self.ticket_manager.store_ticket(ticket, classification, rag_answer)
 
-            # Format result for display
-            result = {
+            # Step 5: Format result for display
+            return {
                 'ticket_id': ticket.id,
                 'subject': ticket.subject,
                 'topic': classification.topic.value,
@@ -93,7 +91,6 @@ class GradioInterface:
                 'sources': rag_answer.sources if rag_answer else [],
                 'success': True
             }
-            return result
 
         except Exception as e:
             logger.error(f"Error processing ticket {ticket.id}: {str(e)}")
@@ -566,8 +563,55 @@ This issue was addressed by our AI system. If you are not satisfied with this re
             error_msg = f"<p style='color: red;'>Error loading database: {str(e)}</p>"
             return error_msg, error_msg, error_msg, error_msg, error_msg
 
+    def _create_html_table(self, headers: List[str], rows: List[List[str]], no_data_message: str = "No data found.") -> str:
+        """
+        Create an HTML table with consistent styling
+        
+        Args:
+            headers: List of column headers
+            rows: List of rows, where each row is a list of cell values
+            no_data_message: Message to display when no data is available
+            
+        Returns:
+            HTML string for the table
+        """
+        if not rows:
+            return f"<p>{no_data_message}</p>"
+        
+        html = """
+        <div class="db-table-container">
+            <table class="db-table">
+                <thead>
+                    <tr>
+        """
+        
+        # Add headers
+        for header in headers:
+            html += f"<th>{header}</th>"
+        
+        html += """
+                    </tr>
+                </thead>
+                <tbody>
+        """
+        
+        # Add rows
+        for row in rows:
+            html += "<tr>"
+            for cell in row:
+                html += f"<td>{cell}</td>"
+            html += "</tr>"
+        
+        html += """
+                </tbody>
+            </table>
+        </div>
+        """
+        
+        return html
+
     def _load_tickets_table(self) -> str:
-        """Load and format tickets table"""
+        """Load and format tickets table using simplified table generation"""
         with sqlite3.connect(self.ticket_manager.db_path) as conn:
             cursor = conn.execute('''
                 SELECT id, subject, body, created_at, updated_at
@@ -577,45 +621,21 @@ This issue was addressed by our AI system. If you are not satisfied with this re
             
             rows = cursor.fetchall()
             
-            if not rows:
-                return "<p>No tickets found in database.</p>"
-            
-            html = """
-            <div class="db-table-container">
-                <table class="db-table">
-                    <thead>
-                        <tr>
-                            <th>Ticket ID</th>
-                            <th>Subject</th>
-                            <th>Body Preview</th>
-                            <th>Created</th>
-                            <th>Updated</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            """
+            headers = ["Ticket ID", "Subject", "Body Preview", "Created", "Updated"]
+            formatted_rows = []
             
             for row in rows:
                 ticket_id, subject, body, created_at, updated_at = row
                 body_preview = body[:100] + "..." if len(body) > 100 else body
-                
-                html += f"""
-                <tr>
-                    <td><code>{ticket_id}</code></td>
-                    <td>{subject}</td>
-                    <td>{body_preview}</td>
-                    <td>{created_at}</td>
-                    <td>{updated_at}</td>
-                </tr>
-                """
+                formatted_rows.append([
+                    f"<code>{ticket_id}</code>",
+                    subject,
+                    body_preview,
+                    created_at,
+                    updated_at
+                ])
             
-            html += """
-                    </tbody>
-                </table>
-            </div>
-            """
-            
-            return html
+            return self._create_html_table(headers, formatted_rows, "No tickets found in database.")
 
     def _load_classifications_table(self) -> str:
         """Load and format classifications table"""

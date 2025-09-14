@@ -5,7 +5,7 @@ models.py - Pydantic models and enums for the RAG application
 This module contains all the data models and enumerations used throughout
 the application for structured data handling.
 """
-from typing import List, Dict, Optional
+from typing import List, Optional
 from enum import Enum
 from pydantic import BaseModel, Field
 

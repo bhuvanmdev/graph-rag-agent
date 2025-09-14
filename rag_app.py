@@ -27,7 +27,6 @@ logger = logging.getLogger(__name__)
 from database import Neo4jRetriever
 from rag import GeminiRAG
 from interface import GradioInterface
-# from utils import setup_environment
 from dotenv import load_dotenv
 
 load_dotenv()

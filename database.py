@@ -6,9 +6,8 @@ This module handles all database interactions including vector search,
 ticket storage, and database statistics.
 """
 import os
-import json
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict
 
 from neo4j import GraphDatabase
 from sentence_transformers import SentenceTransformer
@@ -45,7 +44,7 @@ class Neo4jRetriever:
         logger.info("Embedding model loaded")
 
     def close(self):
-        """Close database connection"""
+        """Close database connection properly to prevent resource leaks"""
         if self.driver:
             self.driver.close()
 

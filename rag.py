@@ -8,7 +8,7 @@ based on retrieved context from the Neo4j knowledge base.
 import os
 import json
 import logging
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple
 
 import google.generativeai as genai
 
@@ -17,6 +17,7 @@ from models import ChunkData, RAGQueryResult
 
 logger = logging.getLogger(__name__)
 
+# System instruction for Gemini model
 SYS_INSTRUCTION = """You are a helpful AI assistant that provides detailed, actionable answers based on the provided context.
 
 Key guidelines:
@@ -29,40 +30,59 @@ Key guidelines:
 
 Provide a structured response with detailed answer."""
 
-safety_settings = [
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
-            ]
-response_schema = {
-                        "type": "object",
-                        "properties": {
-                            "answer": {
-                                "type": "string",
-                                "description": "The generated answer to the user's question"
-                            },
-                            "confidence": {
-                                "type": "number",
-                                "description": "Confidence score between 0 and 1"
-                            },
-                            "needs_human_review": {
-                                "type": "boolean",
-                                "description": "Whether this answer should be reviewed by a human"
-                            },
-                            "reasoning": {
-                                "type": "string",
-                                "description": "Brief explanation of how the answer was derived"
-                            }
-                        },
-                        "required": ["answer", "confidence", "needs_human_review", "reasoning"]
-                    }
+# Safety settings for Gemini
+SAFETY_SETTINGS = [
+    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+]
+
+# Response schema for structured output
+RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "answer": {
+            "type": "string",
+            "description": "The generated answer to the user's question"
+        },
+        "confidence": {
+            "type": "number",
+            "description": "Confidence score between 0 and 1"
+        },
+        "needs_human_review": {
+            "type": "boolean",
+            "description": "Whether this answer should be reviewed by a human"
+        },
+        "reasoning": {
+            "type": "string",
+            "description": "Brief explanation of how the answer was derived"
+        }
+    },
+    "required": ["answer", "confidence", "needs_human_review", "reasoning"]
+}
 
 class GeminiRAG:
-    """Handles RAG operations with Google Gemini"""
+    """
+    Handles RAG operations with Google Gemini
+    
+    This class orchestrates the complete RAG pipeline:
+    1. Context retrieval from Neo4j vector database
+    2. Prompt construction with retrieved context
+    3. Answer generation using Gemini model
+    4. Structured response parsing and validation
+    """
 
     def __init__(self, retriever: Neo4jRetriever):
-        """Initialize Gemini and retriever"""
+        """
+        Initialize Gemini and retriever components
+        
+        Args:
+            retriever: Neo4jRetriever instance for database operations
+            
+        Raises:
+            ValueError: If GEMINI_API_KEY environment variable is not set
+        """
         self.retriever = retriever
 
         # Configure Gemini
@@ -72,17 +92,21 @@ class GeminiRAG:
 
         genai.configure(api_key=api_key)
 
-        
         # Generation config for consistent outputs
         self.generation_config = genai.GenerationConfig(
             temperature=0.3,
             max_output_tokens=2048,
             response_mime_type="application/json",
-            response_schema=response_schema
+            response_schema=RESPONSE_SCHEMA
         )
         
         # Using gemini-flash for faster responses, can switch to gemini-2.5-pro for better quality
-        self.model = genai.GenerativeModel('gemini-2.0-flash-exp', system_instruction=SYS_INSTRUCTION, safety_settings=safety_settings, generation_config=self.generation_config,)
+        self.model = genai.GenerativeModel(
+            'gemini-2.0-flash-exp', 
+            system_instruction=SYS_INSTRUCTION, 
+            safety_settings=SAFETY_SETTINGS, 
+            generation_config=self.generation_config
+        )
 
 
         logger.info("Gemini model initialized")
@@ -150,21 +174,13 @@ Please provide a detailed answer based on the context above."""
         try:
             response = self.model.generate_content(full_prompt)
 
-            # Check if response was blocked by safety filters
-            # if response.candidates and len(response.candidates) > 0:
-            #     candidate = response.candidates[0]
-            #     if hasattr(candidate, 'finish_reason') and candidate.finish_reason == 2:  # SAFETY
-            #         logger.warning(f"RAG response blocked by safety filters for query: {query[:100]}...")
-            #         # Return safe fallback answer
-            #         return "I apologize, but I cannot provide an answer to this query due to content safety restrictions. Please rephrase your question or contact human support for assistance."
-
             # Parse the structured response
             rag_data = json.loads(response.text)
 
             # Return just the answer for backward compatibility
             # You could also return the full structured data if needed
             answer = rag_data['answer']
-            print(answer,'******')
+            
             # Log additional structured data for monitoring
             # note:- the ai based confidence is not used for the confidence score in the ui.
             logger.info(f"RAG Response - AI given Confidence: {rag_data.get('confidence', 'N/A')}, "
