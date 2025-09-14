@@ -3,7 +3,7 @@ set -e
 
 # Start Neo4j in the background (if available)
 if [ -d "/neo4j" ]; then
-    /neo4j/bin/neo4j &
+    /neo4j/bin/neo4j console &
 else
     echo "Neo4j not found, starting without Neo4j..."
 fi

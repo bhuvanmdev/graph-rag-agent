@@ -296,7 +296,7 @@ class GradioInterface:
 
             if use_rag:
                 # Generate RAG answer
-                query = f"Subject: {subject}\nBody: {body}"
+                query = f"Query:\n\n{subject}\n{body}"
                 rag_answer = self.rag.answer_query(query, top_k=5)
                 # Store with RAG answer
                 self.ticket_manager.store_ticket(ticket, classification, rag_answer)
@@ -397,13 +397,13 @@ Thank you for your inquiry. This issue has been classified as a **{classificatio
         success = self.ticket_manager.request_human_review(ticket_id, original_question, rag_answer)
         
         if success:
-            return """
+            return f"""
 ### ✅ **HUMAN REVIEW REQUESTED**
 
-**Status:** Successfully submitted for human review
-**Queue:** Your request has been added to our human agent queue
-**Expected Response:** A human agent will review your case and respond within our standard SLA timeframe
-**Next Steps:** You will receive a personalized response addressing your specific concerns
+**Status:** Successfully submitted for human review. Your ticket ID is {ticket_id}<br>
+**Queue:** Your request has been added to our human agent queue<br>
+**Expected Response:** A human agent will review your case and respond within our standard SLA timeframe<br>
+**Next Steps:** You will receive a personalized response addressing your specific concerns<br>
 
 Thank you for your patience while our expert team prepares a comprehensive response.
             """, False

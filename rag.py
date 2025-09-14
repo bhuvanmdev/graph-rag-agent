@@ -17,6 +17,46 @@ from models import ChunkData, RAGQueryResult
 
 logger = logging.getLogger(__name__)
 
+SYS_INSTRUCTION = """You are a helpful AI assistant that provides detailed, actionable answers based on the provided context.
+
+Key guidelines:
+1. Extract and synthesize information from the context to provide comprehensive solutions
+2. Include step-by-step procedures, code examples, or specific instructions when available
+3. Provide specific details, examples, and actionable steps from the context
+4. If the context contains multiple approaches, explain the different options
+5. Only state information is not available if it truly cannot be found in the context
+6. Cite sources naturally within your explanation using [Source 1](link), [Source 2](link) format
+
+Provide a structured response with detailed answer."""
+
+safety_settings = [
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+            ]
+response_schema = {
+                        "type": "object",
+                        "properties": {
+                            "answer": {
+                                "type": "string",
+                                "description": "The generated answer to the user's question"
+                            },
+                            "confidence": {
+                                "type": "number",
+                                "description": "Confidence score between 0 and 1"
+                            },
+                            "needs_human_review": {
+                                "type": "boolean",
+                                "description": "Whether this answer should be reviewed by a human"
+                            },
+                            "reasoning": {
+                                "type": "string",
+                                "description": "Brief explanation of how the answer was derived"
+                            }
+                        },
+                        "required": ["answer", "confidence", "needs_human_review", "reasoning"]
+                    }
 
 class GeminiRAG:
     """Handles RAG operations with Google Gemini"""
@@ -32,17 +72,18 @@ class GeminiRAG:
 
         genai.configure(api_key=api_key)
 
-        # Initialize Gemini model
-        # Using gemini-2.0-flash-exp for faster responses, can switch to gemini-2.5-pro for better quality
-        self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
-
+        
         # Generation config for consistent outputs
         self.generation_config = genai.GenerationConfig(
-            temperature=0.3,  # Balance between creativity and accuracy
-            top_p=0.95,
-            top_k=40,
-            max_output_tokens=1024,
+            temperature=0.3,
+            max_output_tokens=2048,
+            response_mime_type="application/json",
+            response_schema=response_schema
         )
+        
+        # Using gemini-flash for faster responses, can switch to gemini-2.5-pro for better quality
+        self.model = genai.GenerativeModel('gemini-2.0-flash-exp', system_instruction=SYS_INSTRUCTION, safety_settings=safety_settings, generation_config=self.generation_config,)
+
 
         logger.info("Gemini model initialized")
 
@@ -97,86 +138,25 @@ class GeminiRAG:
         Returns:
             Generated answer
         """
-        # Construct the improved prompt
-        prompt = f"""You are a helpful AI assistant that provides detailed, actionable answers based on the provided context.
 
-IMPORTANT INSTRUCTIONS:
-1. Extract and synthesize detailed information from the context to provide comprehensive solutions.
-2. When the context contains step-by-step procedures, code examples, or specific instructions, include them in your answer.
-3. Provide specific details, examples, and actionable steps from the context rather than just pointing to sources.
-4. If the context contains multiple approaches or solutions, explain the different options available.
-5. Include relevant code snippets, configuration details, or specific parameters mentioned in the context.
-6. Only if the answer truly cannot be found in the context, clearly state that the information is not available.
-7. When citing sources, do so naturally within your detailed explanation rather than just listing URLs.
-
-EXAMPLES OF GOOD RESPONSES:
-- "To configure the connector, follow these steps: 1) Set the connection string to... 2) Configure the authentication by... 3) Test the connection using..., for more refer to the [URL/(s)]"
-- "The API supports two authentication methods: API keys (recommended for scripts) where you set the header 'Authorization: Bearer your-key', and OAuth2 (for web apps) which requires..., for more refer to the [URL/(s)]"
-
-EXAMPLES OF POOR RESPONSES:
-- "Please refer to the documentation at [URL]"
-- "You can find this information in the source materials"
-- "Check the linked documentation for details"
-
-CONTEXT:
+        # Combine query with context
+        full_prompt = f"""CONTEXT:
 {context}
 
-QUESTION:
 {query}
 
-Provide a structured response with detailed answer, confidence level, and assessment."""
+Please provide a detailed answer based on the context above."""
 
         try:
-            # Generate response with structured output using manual schema
-            safety_settings = [
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
-            ]
-
-
-            response = self.model.generate_content(
-                prompt,
-                safety_settings=safety_settings,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=0.7,
-                    top_p=0.95,
-                    top_k=40,
-                    max_output_tokens=1024,
-                    response_mime_type="application/json",
-                    response_schema={
-                        "type": "object",
-                        "properties": {
-                            "answer": {
-                                "type": "string",
-                                "description": "The generated answer to the user's question"
-                            },
-                            "confidence": {
-                                "type": "number",
-                                "description": "Confidence score between 0 and 1"
-                            },
-                            "needs_human_review": {
-                                "type": "boolean",
-                                "description": "Whether this answer should be reviewed by a human"
-                            },
-                            "reasoning": {
-                                "type": "string",
-                                "description": "Brief explanation of how the answer was derived"
-                            }
-                        },
-                        "required": ["answer", "confidence", "needs_human_review", "reasoning"]
-                    }
-                )
-            )
+            response = self.model.generate_content(full_prompt)
 
             # Check if response was blocked by safety filters
-            if response.candidates and len(response.candidates) > 0:
-                candidate = response.candidates[0]
-                if hasattr(candidate, 'finish_reason') and candidate.finish_reason == 2:  # SAFETY
-                    logger.warning(f"RAG response blocked by safety filters for query: {query[:100]}...")
-                    # Return safe fallback answer
-                    return "I apologize, but I cannot provide an answer to this query due to content safety restrictions. Please rephrase your question or contact human support for assistance."
+            # if response.candidates and len(response.candidates) > 0:
+            #     candidate = response.candidates[0]
+            #     if hasattr(candidate, 'finish_reason') and candidate.finish_reason == 2:  # SAFETY
+            #         logger.warning(f"RAG response blocked by safety filters for query: {query[:100]}...")
+            #         # Return safe fallback answer
+            #         return "I apologize, but I cannot provide an answer to this query due to content safety restrictions. Please rephrase your question or contact human support for assistance."
 
             # Parse the structured response
             rag_data = json.loads(response.text)
@@ -184,7 +164,7 @@ Provide a structured response with detailed answer, confidence level, and assess
             # Return just the answer for backward compatibility
             # You could also return the full structured data if needed
             answer = rag_data['answer']
-
+            print(answer,'******')
             # Log additional structured data for monitoring
             # note:- the ai based confidence is not used for the confidence score in the ui.
             logger.info(f"RAG Response - AI given Confidence: {rag_data.get('confidence', 'N/A')}, "

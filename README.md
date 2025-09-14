@@ -41,7 +41,7 @@ docker run -d \
     --name neo4j-rag \
     -p 7474:7474 -p 7687:7687 \
     -e NEO4J_AUTH=neo4j/password \
-    -e NEO4J_PLUGINS='["apoc","neo4j-vector"]' \
+    -e NEO4J_PLUGINS='["apoc"]' \
     -v ./neo4j_data:/data \
     -v ./neo4j_logs:/logs \
     neo4j:5.15
@@ -71,6 +71,80 @@ python rag_app.py
 ```
 
 Access the interface at **http://localhost:7860**
+
+---
+
+## 🐳 Docker Deployment
+
+### Build and Run with Docker
+
+```bash
+# Build the Docker image
+docker build -t graph-rag-agent .
+
+# Run the container with required environment variables
+docker run -d \
+    --name graph-rag-agent \
+    -p 80:80 \
+    -p 7474:7474 \
+    -p 7687:7687 \
+    -p 7860:7860 \
+    -v ./neo4j_data:/app/neo4j_data \
+    -v ./neo4j_logs:/app/neo4j_logs \
+    -e GEMINI_API_KEY=your_gemini_api_key_here \
+    -e NEO4J_URI=bolt://localhost:7687 \
+    -e NEO4J_USERNAME=neo4j \
+    -e NEO4J_PASSWORD=password \
+    graph-rag-agent
+```
+
+### Docker Environment Variables
+
+When running the application via Docker, you must provide the following environment variables:
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GEMINI_API_KEY` | ✅ Yes | - | Your Google Gemini API key for AI responses |
+| `NEO4J_URI` | ❌ No | `bolt://localhost:7687` | Neo4j database connection URI |
+| `NEO4J_USERNAME` | ❌ No | `neo4j` | Neo4j database username |
+| `NEO4J_PASSWORD` | ❌ No | `password` | Neo4j database password |
+
+### Docker Volume Mounts
+
+The Docker container expects these volumes to be mounted for data persistence:
+
+- `./neo4j_data:/app/neo4j_data` - Neo4j database files
+- `./neo4j_logs:/app/neo4j_logs` - Neo4j log files
+
+### Accessing Services
+
+Once the container is running, access the services at:
+
+- **Main Application**: http://localhost (Nginx reverse proxy)
+- **Gradio Interface**: http://localhost:7860
+- **Neo4j Browser**: http://localhost:7474
+- **Neo4j Bolt**: localhost:7687
+
+### Docker Commands
+
+```bash
+# View container logs
+docker logs graph-rag-agent
+
+# Stop the container
+docker stop graph-rag-agent
+
+# Remove the container
+docker rm graph-rag-agent
+
+# Rebuild and restart
+docker build -t graph-rag-agent .
+docker run -d --name graph-rag-agent -p 80:80 -p 7474:7474 -p 7687:7687 -p 7860:7860 \
+    -v ./neo4j_data:/app/neo4j_data \
+    -v ./neo4j_logs:/app/neo4j_logs \
+    -e GEMINI_API_KEY=your_key_here \
+    graph-rag-agent
+```
 
 ---
 

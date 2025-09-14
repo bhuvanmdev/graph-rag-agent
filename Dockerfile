@@ -11,7 +11,7 @@ RUN apt-get update && \
 RUN curl -fsSL https://dist.neo4j.org/neo4j-community-5.15.0-unix.tar.gz -o neo4j.tar.gz && \
     tar -xzf neo4j.tar.gz && \
     mv neo4j-community-5.15.0 /neo4j && \
-    rm neo4j.tar.gz || echo "Neo4j download failed, continuing..."
+    rm neo4j.tar.gz
 
 # Set workdir
 WORKDIR /app
@@ -19,8 +19,12 @@ WORKDIR /app
 # Clone the project
 RUN git clone https://github.com/bhuvanmdev/graph-rag-agent.git .
 
-# Copy Neo4j data and logs
-VOLUME ["/app/neo4j_data", "/app/neo4j_logs"]
+# Create directories for Neo4j data and logs (to be bind mounted from host's current directory)
+RUN mkdir -p /app/neo4j_data /app/neo4j_logs
+
+# Set Neo4j to use these custom directories
+ENV NEO4J_dbms_directories_data=/app/neo4j_data
+ENV NEO4J_dbms_directories_logs=/app/neo4j_logs
 
 # Install Python dependencies
 RUN pip install --upgrade pip && \
@@ -28,7 +32,7 @@ RUN pip install --upgrade pip && \
 
 # Copy Nginx config and run script
 COPY nginx.conf /etc/nginx/nginx.conf
-COPY run.sh /app/run.sh
+COPY scripts/run.sh /app/run.sh
 RUN chmod +x /app/run.sh
 
 # Expose HTTP (Nginx), Neo4j, and Gradio ports
@@ -38,7 +42,7 @@ EXPOSE 80 7474 7687 7860
 # Note: In production, use Docker secrets or environment files for sensitive data
 ENV NEO4J_HOME=/neo4j
 ENV NEO4J_AUTH=neo4j/password
-ENV NEO4J_PLUGINS='["apoc","neo4j-vector"]'
+ENV NEO4J_PLUGINS='["apoc"]'
 
 # Entrypoint: Start all services
 ENTRYPOINT ["/app/run.sh"]
