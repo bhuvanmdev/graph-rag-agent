@@ -43,7 +43,7 @@ class GradioInterface:
             with open('sample_tickets.json', 'r', encoding='utf-8') as file:
                 tickets_data = json.load(file)
             
-            tickets = [TicketData(**ticket) for ticket in tickets_data]
+            tickets = [TicketData(**ticket) for ticket in tickets_data[:10]]  # Limit to first 10 tickets ( api limit :| )
             logger.info(f"Loaded {len(tickets)} sample tickets from JSON file")
             return tickets
 
