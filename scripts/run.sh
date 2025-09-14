@@ -16,8 +16,11 @@ if [ -d "/neo4j" ]; then
     done
 fi
 
-# Start Gradio app in the background
-python rag_app.py &
-
 # Start Nginx in the foreground
-nginx -g 'daemon off;'
+nginx -g 'daemon off;' &
+
+
+# Start Gradio app in the background
+python rag_app.py
+
+wait
