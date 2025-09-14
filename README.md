@@ -42,8 +42,8 @@ docker run -d \
     -p 7474:7474 -p 7687:7687 \
     -e NEO4J_AUTH=neo4j/password \
     -e NEO4J_PLUGINS='["apoc"]' \
-    -v ./neo4j_data:/data \
-    -v ./neo4j_logs:/logs \
+    -v ./neo4j_data:/data \ # get this data from my hf_space
+    -v ./neo4j_logs:/logs \ # get this data from my hf_space
     neo4j:5.15
 ```
 
@@ -61,7 +61,7 @@ NEO4J_PASSWORD=password
 
 ```bash
 # Scrape and ingest website content into Neo4j
-python ingest_pipeline.py --root-url https://gemini.google.com/faq --max-pages 20
+python ingest_pipeline.py --root-url https://website.com/ --max-pages 20
 ```
 
 ### 5. Launch Application
@@ -116,6 +116,9 @@ The Docker container expects these volumes to be mounted for data persistence:
 - `./neo4j_data:/app/neo4j_data` - Neo4j database files
 - `./neo4j_logs:/app/neo4j_logs` - Neo4j log files
 
+# Note: <br>
+The neo4j graph data for atlan website is available [here](https://huggingface.co/spaces/bhuvanmdev/chat-atlan/tree/main).
+
 ### Accessing Services
 
 Once the container is running, access the services at:
@@ -167,22 +170,7 @@ This project demonstrates a **superior architecture** that:
 
 ## 🏗️ System Architecture
 
-```mermaid
-graph TB
-    A[Web Scraping] --> B[Content Processing]
-    B --> C[Graph Database<br/>Neo4j]
-    C --> D[Vector Search<br/>+ Graph Traversal]
-    D --> E[Response Generation<br/>Gemini LLM]
-    
-    F[Support Ticket] --> G[Classification<br/>Gemini]
-    G --> H{RAG vs Human?}
-    H -->|RAG| D
-    H -->|Human| I[Human Queue]
-    
-    J[User Interface<br/>Gradio] --> F
-    E --> J
-    I --> J
-```
+![alt text](images/image.png)
 
 ## 🧪 Core Components
 
@@ -194,7 +182,7 @@ graph TB
 - 📄 **Content Processing**: HTML → Clean Markdown with metadata preservation  
 - 🔪 **Smart Chunking**: Header-aware splitting that maintains document structure
 - 🗄️ **Graph Storage**: Pages, chunks, and relationships stored in Neo4j
-- 🧮 **Vector Embeddings**: 384-dimensional semantic embeddings for each chunk
+- 🧮 **Vector Embeddings**: 384-dimensional semantic embeddings for each chunk, ensures speed-quality balance.
 
 **Usage:**
 ```bash
@@ -367,8 +355,11 @@ python ingest_pipeline.py \
 'all-distilroberta-v1' # Balanced: 768 dimensions
 
 # Chunk Configuration (in ingest_pipeline.py)
+MarkdownHeaderTextSplitter  # Header-aware chunking (default)
+
+# if markdown fails, the next one used is:
 RecursiveCharacterTextSplitter(
-    chunk_size=1500,       # Optimal for context window
+    chunk_size=self.min_chunk_size,       # Optimal for context window
     chunk_overlap=50,      # Maintain continuity
 )
 
@@ -435,24 +426,6 @@ for ticket in tickets:
 
 ---
 
-## 📈 Performance & Monitoring
-
-### System Metrics
-- **Knowledge Base**: Pages indexed, chunks created, relationships mapped
-- **Query Performance**: Average response time, retrieval accuracy
-- **Classification Quality**: Topic prediction accuracy, sentiment analysis
-- **Resource Usage**: Memory consumption, database storage
-
-### Quality Indicators
-```python
-# Retrieval Quality
-relevance_threshold = 0.7  # Minimum similarity score
-context_diversity = len(set(chunk.source_url for chunk in chunks))
-
-# Response Quality  
-human_feedback_score = 4.2  # Out of 5
-correction_rate = 0.15      # 15% of responses corrected
-```
 
 ### Scaling Considerations
 - **Vector Index**: Handles millions of chunks efficiently
@@ -462,94 +435,6 @@ correction_rate = 0.15      # 15% of responses corrected
 
 ---
 
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**❌ Neo4j Connection Failed**
-```bash
-# Check container status
-docker ps | grep neo4j-rag
-
-# View logs
-docker logs neo4j-rag
-
-# Restart if needed
-docker restart neo4j-rag
-```
-
-**❌ Gemini API Errors**  
-```bash
-# Verify API key
-echo $GEMINI_API_KEY
-
-# Test API connection
-curl -H "Content-Type: application/json" \
-     -d '{"contents":[{"parts":[{"text":"Hello"}]}]}' \
-     "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=$GEMINI_API_KEY"
-```
-
-**❌ Empty Search Results**
-```bash
-# Check vector index in Neo4j Browser (http://localhost:7474)
-CALL db.indexes()
-
-# Verify chunk count
-MATCH (c:Chunk) RETURN count(c) as total_chunks
-```
-
-**❌ Slow Performance**
-- Reduce `top_k` retrieval parameter (default: 5)
-- Use faster embedding model (`all-MiniLM-L6-v2`)
-- Optimize chunk size for your content type
-- Enable query result caching
-
-### Debug Mode
-
-```python
-# Enable detailed logging
-import logging
-logging.basicConfig(level=logging.DEBUG)
-
-# Analyze retrieval quality
-result = rag.answer_query("test query", top_k=10)
-print(f"Chunks used: {result.chunks_used}")
-print(f"Avg relevance: {sum(result.relevance_scores)/len(result.relevance_scores):.3f}")
-print(f"Sources: {len(set(result.sources))} unique")
-```
-
----
-
-## 🔐 Security & Privacy
-
-### Data Protection
-- ✅ **API Key Security**: Environment-based configuration
-- ✅ **Database Access**: Authentication and authorization  
-- ✅ **Content Filtering**: Safety validation for generated responses
-- ✅ **Access Logging**: Audit trails for compliance
-
-### Privacy Compliance
-- ✅ **Data Retention**: Configurable ticket storage policies
-- ✅ **Anonymization**: Remove PII from stored content
-- ✅ **Right to Deletion**: Clear user data on request
-- ✅ **Access Controls**: Role-based permissions
-
----
-
-## 🤝 Contributing
-
-### Development Setup
-```bash
-# Install development dependencies  
-pip install -r requirements.txt
-
-# Set up pre-commit hooks (optional)
-pre-commit install
-
-# Run code formatting
-black . --line-length 88
-isort . --profile black
-```
 
 ### Adding Features
 
@@ -613,6 +498,6 @@ Perfect for teams looking to build **next-generation RAG systems** that go beyon
 
 ---
 
-**Built with ❤️ for the future of intelligent customer support**
+**Built with ❤️ for the future of intelligent customer support appliactions**
 
 *Questions? Create an issue or reach out to the maintainers!*
