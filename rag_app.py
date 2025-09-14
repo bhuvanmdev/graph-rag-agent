@@ -45,10 +45,10 @@ def main():
         rag_system = GeminiRAG(retriever)
 
         logger.info("Setting up Customer Support Copilot interface...")
-        interface = GradioInterface(rag_system)
+        demo = GradioInterface(rag_system)
 
         # Launch the application
-        interface.launch(
+        demo.launch(
             share=False,  # Set to True to create a public link
             server_name='0.0.0.0',
             server_port=7860,
