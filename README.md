@@ -364,7 +364,7 @@ RecursiveCharacterTextSplitter(
 )
 
 # Retrieval Parameters (in interface.py)
-top_k=5                    # Number of chunks to retrieve
+top_k=8                    # Number of chunks to retrieve
 ```
 
 ---
@@ -382,7 +382,7 @@ retriever = Neo4jRetriever()
 rag = GeminiRAG(retriever)
 
 # Process queries
-result = rag.answer_query("How do I set up SAML SSO?", top_k=5)
+result = rag.answer_query("How do I set up SAML SSO?", top_k=8)
 
 print(f"Answer: {result.answer}")
 print(f"Sources: {', '.join(result.sources)}")

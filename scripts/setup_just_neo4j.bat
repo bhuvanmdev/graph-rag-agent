@@ -23,7 +23,7 @@ docker run -d ^
     --name neo4j-rag ^
     -p 7474:7474 -p 7687:7687 ^
     -e NEO4J_AUTH=neo4j/password ^
-    -e NEO4J_PLUGINS=["apoc","neo4j-vector"] ^
+    -e NEO4J_PLUGINS=["apoc"] ^
     -v %cd%\neo4j_data:/data ^
     -v %cd%\neo4j_logs:/logs ^
     neo4j:5.15

@@ -58,7 +58,7 @@ class Neo4jRetriever:
             logger.error(f"Error generating query embedding: {str(e)}")
             raise
 
-    def vector_search(self, query_embedding: List[float], top_k: int = 5) -> List[ChunkData]:
+    def vector_search(self, query_embedding: List[float], top_k: int = 8) -> List[ChunkData]:
         """
         Perform vector similarity search to find relevant chunks
 

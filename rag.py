@@ -87,7 +87,7 @@ class GeminiRAG:
 
         logger.info("Gemini model initialized")
 
-    def retrieve_context(self, query: str, top_k: int = 5) -> Tuple[str, List[ChunkData]]:
+    def retrieve_context(self, query: str, top_k: int = 8) -> Tuple[str, List[ChunkData]]:
         """
         Retrieve relevant context for the query
 
@@ -177,7 +177,7 @@ Please provide a detailed answer based on the context above."""
             logger.error(f"Error generating answer with Gemini: {str(e)}")
             return f"I encountered an error while generating the answer: {str(e)}"
 
-    def answer_query(self, query: str, top_k: int = 5) -> RAGQueryResult:
+    def answer_query(self, query: str, top_k: int = 8) -> RAGQueryResult:
         """
         Complete RAG pipeline: retrieve context and generate answer
 

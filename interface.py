@@ -8,6 +8,8 @@ including bulk ticket processing and individual query handling.
 import json
 import logging
 import sqlite3
+import asyncio
+import concurrent.futures
 from typing import List, Dict, Tuple, Optional, Any
 from datetime import datetime
 
@@ -35,70 +37,71 @@ class GradioInterface:
         self.sample_tickets = self._load_sample_tickets()
 
     def _load_sample_tickets(self) -> List[TicketData]:
-        """Load sample tickets from embedded JSON data"""
+        """Load sample tickets from JSON file"""
         try:
-            # Sample tickets JSON data (subset from Sample tickets.md)
-            sample_tickets_json = """[
-                {
-                    "id": "TICKET-245",
-                    "subject": "Connecting Snowflake to Atlan - required permissions?",
-                    "body": "Hi team, we're trying to set up our primary Snowflake production database as a new source in Atlan, but the connection keeps failing. We've tried using our standard service account, but it's not working. Our entire BI team is blocked on this integration for a major upcoming project, so it's quite urgent. Could you please provide a definitive list of the exact permissions and credentials needed on the Snowflake side to get this working? Thanks."
-                },
-                {
-                    "id": "TICKET-246",
-                    "subject": "Which connectors automatically capture lineage?",
-                    "body": "Hello, I'm new to Atlan and trying to understand the lineage capabilities. The documentation mentions automatic lineage, but it's not clear which of our connectors (we use Fivetran, dbt, and Tableau) support this out-of-the-box. We need to present a clear picture of our data flow to leadership next week. Can you explain how lineage capture differs for these tools?"
-                },
-                {
-                    "id": "TICKET-247",
-                    "subject": "Deployment of Atlan agent for private data lake",
-                    "body": "Our primary data lake is hosted on-premise within a secure VPC and is not exposed to the internet. We understand we need to use the Atlan agent for this, but the setup instructions are a bit confusing for our security team. This is a critical source for us, and we can't proceed with our rollout until we get this connected. Can you provide a detailed deployment guide or connect us with a technical expert?"
-                },
-                {
-                    "id": "TICKET-248",
-                    "subject": "How to surface sample rows and schema changes?",
-                    "body": "Hi, we've successfully connected our Redshift cluster, and the assets are showing up. However, my data analysts are asking how they can see sample data or recent schema changes directly within Atlan without having to go back to Redshift. Is this feature available? I feel like I'm missing something obvious."
-                },
-                {
-                    "id": "TICKET-249",
-                    "subject": "Exporting lineage view for a specific table",
-                    "body": "For our quarterly audit, I need to provide a complete upstream and downstream lineage diagram for our core `fact_orders` table. I can see the lineage perfectly in the UI, but I can't find an option to export this view as an image or PDF. This is a hard requirement from our compliance team and the deadline is approaching fast. Please help!"
-                },
-                {
-                    "id": "TICKET-251",
-                    "subject": "Using the Visual Query Builder",
-                    "body": "I'm a business analyst and not very comfortable with writing complex SQL. I was excited to see the Visual Query Builder in Atlan, but I'm having trouble figuring out how to join multiple tables and save my query for later use. Is there a tutorial or a quick guide you can point me to?"
-                },
-                {
-                    "id": "TICKET-252",
-                    "subject": "Programmatic extraction of lineage",
-                    "body": "Our internal data science team wants to build a custom application that analyzes metadata propagation delays. To do this, we need to programmatically extract lineage data from Atlan via an API. Does the API expose lineage information, and if so, could you provide an example of the endpoint and the structure of the response?"
-                },
-                {
-                    "id": "TICKET-254",
-                    "subject": "How to create a business glossary and link terms in bulk?",
-                    "body": "We are migrating our existing business glossary from a spreadsheet into Atlan. We have over 500 terms. Manually creating each one and linking them to thousands of assets seems impossible. Is there a bulk import feature using CSV or an API to create terms and link them to assets? This is blocking our entire governance initiative."
-                },
-                {
-                    "id": "TICKET-259",
-                    "subject": "How does Atlan surface sensitive fields like PII?",
-                    "body": "Our security team is evaluating Atlan and their main question is around PII and sensitive data. How does Atlan automatically identify fields containing PII? What are our options to apply tags or masks to these fields once they are identified to prevent unauthorized access?"
-                },
-                {
-                    "id": "TICKET-261",
-                    "subject": "Enabling and testing SAML SSO",
-                    "body": "We are ready to enable SAML SSO with our Okta instance. However, we are very concerned about disrupting our active users if the configuration is wrong. Is there a way to test the SSO configuration for a specific user or group before we enable it for the entire workspace?"
-                }
-            ]"""
-
-            tickets_data = json.loads(sample_tickets_json)
+            # Load from sample_tickets.json file
+            with open('sample_tickets.json', 'r', encoding='utf-8') as file:
+                tickets_data = json.load(file)
+            
             tickets = [TicketData(**ticket) for ticket in tickets_data]
-            logger.info(f"Loaded {len(tickets)} sample tickets")
+            logger.info(f"Loaded {len(tickets)} sample tickets from JSON file")
             return tickets
 
+        except FileNotFoundError:
+            logger.error("sample_tickets.json file not found")
+            return []
         except Exception as e:
             logger.error(f"Error loading sample tickets: {str(e)}")
             return []
+
+    def _process_single_ticket_for_bulk(self, ticket: TicketData) -> Dict:
+        """
+        Process a single ticket for bulk processing
+        
+        Args:
+            ticket: The ticket to process
+            
+        Returns:
+            Dictionary with processing results
+        """
+        try:
+            # Classify the ticket
+            classification = self.classifier.classify_ticket(ticket)
+
+            # Determine if RAG should be used
+            use_rag = self.classifier.should_use_rag(classification.topic)
+
+            rag_answer = None
+            if use_rag:
+                # Generate RAG answer
+                query = f"{ticket.subject} {ticket.body}"
+                rag_answer = self.rag.answer_query(query, top_k=8)
+
+            # Store in database
+            self.ticket_manager.store_ticket(ticket, classification, rag_answer)
+
+            # Format result for display
+            result = {
+                'ticket_id': ticket.id,
+                'subject': ticket.subject,
+                'topic': classification.topic.value,
+                'sentiment': classification.sentiment.value,
+                'priority': classification.priority.value,
+                'reasoning': classification.reasoning,
+                'use_rag': use_rag,
+                'rag_answer': rag_answer.answer if rag_answer else "Routed to human agent",
+                'sources': rag_answer.sources if rag_answer else [],
+                'success': True
+            }
+            return result
+
+        except Exception as e:
+            logger.error(f"Error processing ticket {ticket.id}: {str(e)}")
+            return {
+                'ticket_id': ticket.id,
+                'success': False,
+                'error': str(e)
+            }
 
     def process_bulk_tickets(self) -> Tuple[str, str]:
         """
@@ -128,7 +131,7 @@ class GradioInterface:
                 if use_rag:
                     # Generate RAG answer
                     query = f"{ticket.subject} {ticket.body}"
-                    rag_answer = self.rag.answer_query(query, top_k=10)
+                    rag_answer = self.rag.answer_query(query, top_k=8)
                     rag_count += 1
                 else:
                     human_count += 1
@@ -297,7 +300,7 @@ class GradioInterface:
             if use_rag:
                 # Generate RAG answer
                 query = f"Query:\n\n{subject}\n{body}"
-                rag_answer = self.rag.answer_query(query, top_k=5)
+                rag_answer = self.rag.answer_query(query, top_k=8)
                 # Store with RAG answer
                 self.ticket_manager.store_ticket(ticket, classification, rag_answer)
 
@@ -421,7 +424,7 @@ Thank you for your patience while our expert team prepares a comprehensive respo
             return "No ticket information available.", True, "", "", ""
 
         # Generate RAG answer
-        rag_answer = self.rag.answer_query(question, top_k=5)
+        rag_answer = self.rag.answer_query(question, top_k=8)
 
         # Update the ticket with RAG answer
         self.ticket_manager.update_ticket_answer(ticket_id, rag_answer)
@@ -483,6 +486,30 @@ This issue was addressed by our AI system. If you are not satisfied with this re
         if ticket_data and ticket_data.get('answer'):
             return ticket_data['answer']['answer']
         return ""
+
+    def load_example_ticket(self, example_index: int) -> Tuple[str, str]:
+        """Load an example ticket by index"""
+        examples = [
+            {
+                # AI-answered: HOW_TO topic
+                "subject": "How to surface sample rows and schema changes?",
+                "body": "Hi, we've successfully connected our Redshift cluster, and the assets are showing up. However, my data analysts are asking how they can see sample data or recent schema changes directly within Atlan without having to go back to Redshift. Is this feature available? I feel like I'm missing something obvious."
+            },
+            {
+                # AI-answered: API_SDK topic  
+                "subject": "SDK availability and Python example",
+                "body": "I'm a data engineer and prefer using SDKs over raw API calls. Which languages do you provide SDKs for? I'm particularly interested in Python. Where can I find the installation instructions (e.g., PyPI package name) and a short code snippet for a common task, like creating a new glossary term?"
+            },
+            {
+                # Human-routed: CONNECTOR topic
+                "subject": "Connecting Snowflake to Atlan - required permissions?",
+                "body": "Hi team, we're trying to set up our primary Snowflake production database as a new source in Atlan, but the connection keeps failing. We've tried using our standard service account, but it's not working. Our entire BI team is blocked on this integration for a major upcoming project, so it's quite urgent. Could you please provide a definitive list of the exact permissions and credentials needed on the Snowflake side to get this working? Thanks."
+            }
+        ]
+        
+        if 0 <= example_index < len(examples):
+            return examples[example_index]["subject"], examples[example_index]["body"]
+        return "", ""
 
     def load_database_contents(self) -> Tuple[str, str, str, str, str]:
         """
@@ -1235,6 +1262,14 @@ This issue was addressed by our AI system. If you are not satisfied with this re
                     with gr.Row():
                         # Input section
                         with gr.Column(scale=1):
+                            # Example buttons section
+                            gr.Markdown("### 📝 Quick Examples")
+                            with gr.Row():
+                                example_btn_1 = gr.Button("🤖 How-to Question", size="sm")
+                                example_btn_2 = gr.Button("🤖 API/SDK Query", size="sm") 
+                                example_btn_3 = gr.Button("� Connector Issue", size="sm")
+                            
+                            gr.Markdown("### ✏️ Or Enter Your Own")
                             new_subject = gr.Textbox(
                                 label="📋 Ticket Subject",
                                 placeholder="Enter ticket subject...",
@@ -1337,6 +1372,22 @@ This issue was addressed by our AI system. If you are not satisfied with this re
                         outputs=[human_review_status]
                     )
 
+                    # Example button event handlers
+                    example_btn_1.click(
+                        fn=lambda: self.load_example_ticket(0),
+                        outputs=[new_subject, new_body]
+                    )
+                    
+                    example_btn_2.click(
+                        fn=lambda: self.load_example_ticket(1),
+                        outputs=[new_subject, new_body]
+                    )
+                    
+                    example_btn_3.click(
+                        fn=lambda: self.load_example_ticket(2),
+                        outputs=[new_subject, new_body]
+                    )
+
                 # Tab 3: Ticket SQL Database
                 with gr.TabItem("🗄️ Ticket SQL DB"):
                     gr.Markdown("""
@@ -1402,7 +1453,7 @@ This issue was addressed by our AI system. If you are not satisfied with this re
                         top_k_slider = gr.Slider(
                             minimum=1,
                             maximum=10,
-                            value=5,
+                            value=8,
                             step=1,
                             label="Number of chunks to retrieve"
                         )
