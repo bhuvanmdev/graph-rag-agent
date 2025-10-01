@@ -111,9 +111,14 @@ class GeminiRAG:
 
         logger.info("Gemini model initialized")
 
-    def retrieve_context(self, query: str, top_k: int = 8) -> Tuple[str, List[ChunkData]]:
+    def retrieve_context(self, query: str, top_k: int = 8, use_graph_search: bool = True) -> Tuple[str, List[ChunkData]]:
         """
-        Retrieve relevant context for the query
+        Retrieve relevant context for the query using graph-enhanced search
+
+        Args:
+            query: User's question
+            top_k: Number of top results to retrieve
+            use_graph_search: Whether to use graph-enhanced search (True) or basic vector search (False)
 
         Returns:
             Tuple of (context_string, chunk_metadata)
@@ -123,9 +128,13 @@ class GeminiRAG:
             logger.info(f"Generating embedding for query: {query[:100]}...")
             query_embedding = self.retriever.embed_query(query)
 
-            # Perform vector search
-            logger.info(f"Searching for top {top_k} relevant chunks...")
-            chunks = self.retriever.vector_search(query_embedding, top_k)
+            # Perform search - graph-enhanced by default for better context
+            if use_graph_search:
+                logger.info(f"Performing graph-enhanced search for top {top_k} relevant chunks...")
+                chunks = self.retriever.hybrid_graph_search(query_embedding, top_k)
+            else:
+                logger.info(f"Performing basic vector search for top {top_k} relevant chunks...")
+                chunks = self.retriever.vector_search(query_embedding, top_k)
 
             if not chunks:
                 logger.warning("No relevant chunks found")
@@ -136,15 +145,19 @@ class GeminiRAG:
             for i, chunk in enumerate(chunks, 1):
                 # Include relevance score to help LLM prioritize information
                 score_indicator = "⭐" * min(5, max(1, int(chunk.score * 5))) if chunk.score else ""
+                
+                # Mark chunks from graph traversal (lower scores indicate related content)
+                source_type = "Direct Match" if chunk.score > 0.7 else "Related Content"
+                
                 context_parts.append(
-                    f"[Source {i}: {chunk.page_title} {score_indicator}]\n"
+                    f"[Source {i}: {chunk.page_title} - {source_type} {score_indicator}]\n"
                     f"URL: {chunk.source_url}\n"
                     f"Content:\n{chunk.text}\n"
                 )
 
             context = "\n" + "="*50 + "\n".join(context_parts)
 
-            logger.info(f"Retrieved {len(chunks)} chunks for context")
+            logger.info(f"Retrieved {len(chunks)} chunks for context (graph-enhanced: {use_graph_search})")
             return context, chunks
 
         except Exception as e:
